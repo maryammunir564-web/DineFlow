@@ -1,0 +1,182 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RoleType {
+  SUPER_ADMIN
+  TENANT_OWNER
+  TENANT_ADMIN
+  BRANCH_MANAGER
+  KITCHEN_STAFF
+  WAITER
+  CASHIER
+  CUSTOM
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DEACTIVATED
+}
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branches    Branch[]
+  memberships Membership[]
+  roles       Role[]
+  invitations Invitation[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String?
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branchMemberships BranchMembership[]
+  invitations       Invitation[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([isActive])
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  phone        String?
+  avatarUrl    String?
+  passwordHash String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships       Membership[]
+  branchMemberships BranchMembership[]
+  sessions          Session[]
+  sentInvitations   Invitation[]       @relation("InvitedByUser")
+
+  @@index([email])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  tenantId    String?
+  name        String
+  type        RoleType @default(CUSTOM)
+  permissions String[]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  invitations Invitation[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([type])
+}
+
+model Membership {
+  id        String           @id @default(uuid())
+  tenantId  String
+  userId    String
+  roleId    String
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  branchMemberships BranchMembership[]
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([status])
+}
+
+model BranchMembership {
+  id           String   @id @default(uuid())
+  branchId     String
+  userId       String
+  membershipId String
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, userId])
+  @@index([branchId])
+  @@index([userId])
+  @@index([membershipId])
+}
+
+model Invitation {
+  id          String    @id @default(uuid())
+  tenantId    String
+  branchId    String?
+  email       String
+  roleId      String
+  token       String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  invitedBy User    @relation("InvitedByUser", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([token])
+}
