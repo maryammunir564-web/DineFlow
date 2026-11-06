@@ -34,10 +34,11 @@ model Tenant {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  branches    Branch[]
-  memberships Membership[]
-  roles       Role[]
-  invitations Invitation[]
+  branches          Branch[]
+  memberships       Membership[]
+  branchMemberships BranchMembership[]
+  roles             Role[]
+  invitations       Invitation[]
 
   @@index([slug])
   @@index([isActive])
@@ -59,25 +60,30 @@ model Branch {
   invitations       Invitation[]
 
   @@unique([tenantId, name])
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([isActive])
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  name         String?
-  phone        String?
-  avatarUrl    String?
-  passwordHash String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String?
+  phone           String?
+  avatarUrl       String?
+  passwordHash    String?
+  emailVerified   Boolean   @default(false)
+  emailVerifiedAt DateTime?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  memberships       Membership[]
-  branchMemberships BranchMembership[]
-  sessions          Session[]
-  sentInvitations   Invitation[]       @relation("InvitedByUser")
+  memberships             Membership[]
+  branchMemberships       BranchMembership[]
+  sessions                Session[]
+  sentInvitations         Invitation[]             @relation("InvitedByUser")
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
 
   @@index([email])
 }
@@ -95,6 +101,36 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  email     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
   @@index([expiresAt])
 }
 
@@ -126,13 +162,14 @@ model Membership {
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   Role   @relation(fields: [roleId], references: [id], onDelete: Restrict)
-
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role              Role               @relation(fields: [roleId], references: [id], onDelete: Restrict)
   branchMemberships BranchMembership[]
 
   @@unique([tenantId, userId])
+  @@unique([id, tenantId])
+  @@unique([id, tenantId, userId])
   @@index([tenantId])
   @@index([userId])
   @@index([roleId])
@@ -141,6 +178,7 @@ model Membership {
 
 model BranchMembership {
   id           String   @id @default(uuid())
+  tenantId     String
   branchId     String
   userId       String
   membershipId String
@@ -148,11 +186,13 @@ model BranchMembership {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  branch     Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch     @relation(fields: [branchId, tenantId], references: [id, tenantId], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId, tenantId, userId], references: [id, tenantId, userId], onDelete: Cascade)
 
   @@unique([branchId, userId])
+  @@index([tenantId])
   @@index([branchId])
   @@index([userId])
   @@index([membershipId])
